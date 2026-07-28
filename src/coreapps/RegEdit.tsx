@@ -175,7 +175,7 @@ class RegEdit extends App {
 	page = async () => (
 		<div
 			style={{
-				height: "100%",
+				height: "calc(100% - 27px)",
 				width: "100%",
 				position: "absolute",
 				color: use(anura.ui.theme.state.foreground),
