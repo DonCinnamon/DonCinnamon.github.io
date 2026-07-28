@@ -33,13 +33,18 @@ build/bootstrap: package.json server/package.json
 #   build/libs/<libname>/<bundle>.min.js.map
 #   build/libs/<libname>/version (contains version number as JSON string, e.g. "1.2.3")
 
-external-libs: build/libs/workbox/version build/libs/mime/mime.iife.js build/libs/idb-keyval/idb-keyval.js build/libs/comlink/comlink.min.mjs build/assets/matter.css build/libs/dreamland/all.js build/libs/filer/filer.min.js build/libs/nfsadapter/nfsadapter.js build/libs/fflate/browser.js build/libs/libcurl/version bin/chimerix.ajs
+external-libs: build/libs/webdav/version build/libs/workbox/version build/libs/mime/mime.iife.js build/libs/idb-keyval/idb-keyval.js build/libs/comlink/comlink.min.mjs build/assets/matter.css build/libs/dreamland/all.js build/libs/filer/filer.min.js build/libs/nfsadapter/nfsadapter.js build/libs/fflate/browser.js build/libs/libcurl/version bin/chimerix.ajs
 	mkdir -p build/libs/
 	
 build/libs/workbox/version: build/bootstrap
 	mkdir -p build/libs/workbox
 	npx workbox-cli copyLibraries build/libs/workbox/
 	jq '.version' node_modules/workbox-build/package.json > build/libs/workbox/version
+build/libs/webdav/version: build/bootstrap
+	mkdir -p build/libs/webdav
+	cp node_modules/webdav/dist/web/index.js build/libs/webdav
+	jq '.version' node_modules/webdav/package.json > build/libs/webdav/version
+
 
 build/libs/mime/mime.iife.js: build/bootstrap
 	mkdir -p build/libs/mime
