@@ -140,7 +140,8 @@ bin/chimerix.ajs: external/chimerix/src/*
 external/anura-browserjs/packages/chrome/dist/index.html: external/anura-browserjs/packages/chrome/package.json external/anura-browserjs/packages/chrome/src/*.ts external/anura-browserjs/packages/chrome/src/*.tsx external/anura-browserjs/packages/scramjet/package.json external/anura-browserjs/packages/scramjet/packages/core/src/*.ts
 	cd external/anura-browserjs; pnpm i
 	cd external/anura-browserjs/packages/scramjet/packages/core; pnpm rewriter:build
-	cd external/anura-browserjs; pnpm build && pnpm build:dreamland
+	cd external/anura-browserjs; pnpm build
+	#cd external/anura-browserjs; pnpm build:dreamland
 	cd external/anura-browserjs/packages/chrome; pnpm build
 
 apps/libfileview.lib/icons: apps/libfileview.lib/icons.json
@@ -180,7 +181,7 @@ milestone:
 commit:
 	git rev-parse HEAD > build/COMMIT
 build/cache-load.json: FORCE
-	(find apps/ -type f && cd build/ && find lib/ -type f && find libs/ -type f && find uv/ -type f && find assets/ -type f && find bundle.css -type f && cd ../public/ && find . -type f)| grep -v -e node_modules -e \.map -e \.d\.ts -e "/\." -e "uv/" -e "workbox/" | jq -Rnc '[inputs]' > build/cache-load.json
+	(find apps/ -type f && cd build/ && find lib/ -type f && find libs/ -type f && find assets/ -type f && find bundle.css -type f && cd ../public/ && find . -type f)| grep -v -e node_modules -e \.map -e \.d\.ts -e "/\." -e "workbox/" | jq -Rnc '[inputs]' > build/cache-load.json
 	
 static: all
 	mkdir -p static/
