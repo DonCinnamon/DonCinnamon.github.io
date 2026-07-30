@@ -1,27 +1,112 @@
-class WispBus {
-	clientMappings = new Map();
-	serverMappings = new Map();
-	upstream: WebSocket | RTCDataChannel;
-	lastGlobalID = 1;
-	lastUpstreamId = 1;
-	upstreamClients = new Map();
-	virtualServerMapping = new Map();
-	upstreamBuffer = 64;
+type WispClientMapping = {
+	remoteId: number;
+	handler: WebSocket | RTCDataChannel;
+	packetCallBack: any;
+};
 
+type WispServerMapping = {
+	regex: RegExp;
+	handler: WebSocket | RTCDataChannel;
+	lastId: number;
+	clients: Map<number, number>;
+	defaultBuffer?: number;
+};
+class WispBus {
 	static CONNECTING = 0;
 	static OPEN = 1;
 	static CLOSING = 2;
 	static CLOSED = 3;
 
+	upstream: WebSocket | RTCDataChannel;
+	upstreamBuffer = 64;
+	lastGlobalID = 1;
+	lastUpstreamId = 1;
+	clientMappings: Map<number, WispClientMapping> = new Map();
+	serverMappings: Map<string, WispServerMapping> = new Map();
+	upstreamClients: Map<number, number> = new Map();
+	virtualServerMapping = new Map();
+
+	constructor(upstreamProvider: WebSocket | RTCDataChannel) {
+		this.upstream = upstreamProvider;
+		this.upstream.binaryType = "arraybuffer";
+		this.upstream.addEventListener("message", (e: MessageEvent) => {
+			this.handleIncomingPacket("upstream", new Uint8Array(e.data));
+		});
+	}
+
 	setUpstreamProvider(upstreamProvider: WebSocket | RTCDataChannel) {
-		// TODO: close all client mappings assigned to upstream first
+		for (const [globalID, mapping] of this.clientMappings.entries()) {
+			if (mapping.handler !== this.upstream) continue;
+
+			try {
+				mapping.handler.send(
+					wisp.createWispPacket({
+						packetType: wisp.CLOSE,
+						streamID: mapping.remoteId,
+					}),
+				);
+			} catch {
+				// ignore errors while replacing the upstream provider
+			}
+
+			this.clientMappings.delete(globalID);
+			this.upstreamClients.delete(mapping.remoteId);
+		}
 
 		this.upstream = upstreamProvider;
 	}
 
+	registerServer(
+		id: string,
+		regex: RegExp,
+		handler: WebSocket | RTCDataChannel,
+	) {
+		this.serverMappings.set(id, {
+			regex,
+			handler,
+			lastId: 0,
+			clients: new Map(),
+		});
+		handler.binaryType = "arraybuffer";
+		handler.addEventListener("message", (e: MessageEvent) => {
+			this.handleIncomingPacket(id, new Uint8Array(e.data));
+		});
+	}
+
+	handleIncomingPacket(sourceID: string, packet: Uint8Array) {
+		const parsed = wisp.parseIncomingPacket(packet)!;
+
+		if (sourceID !== "upstream") {
+			if (parsed.streamID === 0) {
+				if (parsed.packetType === wisp.CONTINUE) {
+					this.serverMappings.get(sourceID).defaultBuffer =
+						parsed.remainingBuffer!;
+				}
+				return;
+			}
+
+			parsed.streamID = this.serverMappings
+				.get(sourceID)
+				.clients?.get(parsed!.streamID);
+		} else {
+			if (parsed.streamID === 0) {
+				if (parsed.packetType === wisp.CONTINUE) {
+					this.upstreamBuffer = parsed.remainingBuffer!;
+				}
+				return;
+			}
+			parsed.streamID = this.upstreamClients.get(parsed!.streamID);
+		}
+
+		const reconstructedPacket = wisp.createWispPacket(parsed);
+		this.clientMappings
+			.get(parsed.streamID)
+			.packetCallBack(reconstructedPacket);
+	}
+
 	handleOutgoingPacket(
-		packet: Uint8Array,
 		virtualServerID: number,
+		packet: Uint8Array,
 		packetCallBack?: any,
 	) {
 		const parsed = wisp.parseIncomingPacket(packet);
@@ -34,10 +119,10 @@ class WispBus {
 			let assignedHandler;
 			let assignedRemoteStreamId;
 			for (const [id, serverMapping] of this.serverMappings.entries()) {
-				if ((serverMapping.regex as RegExp).test(parsed.hostname!)) {
+				if (serverMapping.regex.test(parsed.hostname!)) {
 					handleByUpstream = false;
-					assignedRemoteStreamId = serverMapping.lastId;
 					assignedHandler = serverMapping.handler;
+					assignedRemoteStreamId = serverMapping.lastId;
 					serverMapping.clients.set(assignedRemoteStreamId, this.lastGlobalID);
 					packetCallBack(
 						wisp.createWispPacket({
@@ -94,53 +179,6 @@ class WispBus {
 			return null;
 		}
 		return undefined;
-	}
-	handleIncomingPacket(packet: Uint8Array, sourceID: string) {
-		const parsed = wisp.parseIncomingPacket(packet)!;
-
-		if (sourceID !== "upstream") {
-			if (parsed.streamID === 0) {
-				if (parsed.packetType === wisp.CONTINUE) {
-					this.serverMappings.get(sourceID).defaultBuffer =
-						parsed.remainingBuffer!;
-				}
-				return;
-			}
-
-			parsed.streamID = this.serverMappings
-				.get(sourceID)
-				.clients?.get(parsed!.streamID);
-		} else {
-			if (parsed.streamID === 0) {
-				if (parsed.packetType === wisp.CONTINUE) {
-					this.upstreamBuffer = parsed.remainingBuffer!;
-				}
-				return;
-			}
-			parsed.streamID = this.upstreamClients.get(parsed!.streamID);
-		}
-
-		const reconstructedPacket = wisp.createWispPacket(parsed);
-		this.clientMappings
-			.get(parsed.streamID)
-			.packetCallBack(reconstructedPacket);
-	}
-
-	registerServer(
-		regex: RegExp,
-		id: string,
-		handler: RTCDataChannel | WebSocket,
-	) {
-		this.serverMappings.set(id, {
-			regex,
-			handler,
-			lastId: 0,
-			clients: new Map(),
-		});
-		handler.binaryType = "arraybuffer";
-		handler.addEventListener("message", (e: MessageEvent) => {
-			this.handleIncomingPacket(new Uint8Array(e.data), id);
-		});
 	}
 
 	getFakeWispProxySocket() {
@@ -202,7 +240,7 @@ class WispBus {
 				}
 				// ensure a Uint8Array
 				const pkt = data instanceof Uint8Array ? data : new Uint8Array(data);
-				bus.handleOutgoingPacket(pkt, this.virtualServerID, (response: any) => {
+				bus.handleOutgoingPacket(this.virtualServerID, pkt, (response: any) => {
 					// route any incoming-from-server WISP data back as a message event
 					this.dispatchEvent(
 						new MessageEvent("message", { data: response.buffer }),
@@ -411,14 +449,6 @@ class WispBus {
 		}
 		return WispWebSocket;
 	}
-
-	constructor(upstreamProvider: WebSocket | RTCDataChannel) {
-		this.upstream = upstreamProvider;
-		this.upstream.binaryType = "arraybuffer";
-		this.upstream.addEventListener("message", (e: MessageEvent) => {
-			this.handleIncomingPacket(new Uint8Array(e.data), "upstream");
-		});
-	}
 }
 
 /*
@@ -429,21 +459,21 @@ await sleep(10)
 
 bus.virtualServerMapping.set(1, {mappings: new Map()});
 
-bus.handleOutgoingPacket(wisp.createWispPacket({
+bus.handleOutgoingPacket(1, wisp.createWispPacket({
 			packetType: wisp.CONNECT,
 			streamType: wisp.TCP,
 			streamID: 2,
 			hostname: "example.com",
 			port: 80,
-		}), 1, (data) => {
+		}), (data) => {
 			console.log(new TextDecoder().decode(wisp.parseIncomingPacket(data).payload))
         })
-bus.handleOutgoingPacket(wisp.createWispPacket({
+bus.handleOutgoingPacket(1, wisp.createWispPacket({
 			packetType: wisp.DATA,
 			streamID: 2,
 			hostname: "example.com",
             payload: new TextEncoder().encode("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n")
-		}), 1)
+		}))
 */
 
 // current test code for emulated wisp socket
