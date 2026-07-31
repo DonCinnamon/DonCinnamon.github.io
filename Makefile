@@ -141,7 +141,7 @@ external/anura-browserjs/packages/chrome/dist/index.html: external/anura-browser
 	cd external/anura-browserjs; pnpm i
 	cd external/anura-browserjs/packages/scramjet/packages/core; pnpm rewriter:build
 	cd external/anura-browserjs; pnpm build
-	#cd external/anura-browserjs; pnpm build:dreamland
+	cd external/anura-browserjs; pnpm build:dreamland
 	cd external/anura-browserjs/packages/chrome; pnpm build
 
 apps/libfileview.lib/icons: apps/libfileview.lib/icons.json
