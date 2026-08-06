@@ -152,13 +152,13 @@ ANURA_VERSION = $(shell jq -r '.version' package.json)
 bundle: tsc css lint milestone commit build/cache-load.json
 	mkdir -p build/artifacts
 	
+watch: FORCE
+	npx tsc-watch --onSuccess "make css milestone commit build/cache-load.json"
+	
 clean:
 	rm -rf build
-	cd external/v86 && make clean || true
-
-watch: FORCE
-	npx tsc-watch --onSuccess "make css milestone commit build/cache-load.json" 
-
+	cd external/v86 && make clean || true 
+	
 tsc:
 	mkdir -p build/artifacts
 	cp -r src/* build/artifacts
