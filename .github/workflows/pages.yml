@@ -40,10 +40,12 @@ jobs:
           sudo apt-get install -y make jq uuid-runtime wget clang \
             gcc-multilib libc6-dev-i386 binaryen
 
-      - name: Rust targets
+      - name: Rust toolchains
         run: |
+          rustup toolchain install nightly --component rust-src
           rustup target add wasm32-unknown-unknown
           rustup target add i686-unknown-linux-gnu
+          rustup +nightly target add wasm32-unknown-unknown
 
       - name: wasm tooling
         run: |
