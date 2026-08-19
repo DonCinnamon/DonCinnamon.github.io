@@ -1,0 +1,72 @@
+name: Deploy Anura to Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: System dependencies
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y make jq uuid-runtime wget clang \
+            gcc-multilib libc6-dev-i386 binaryen
+
+      - name: Rust targets
+        run: |
+          rustup target add wasm32-unknown-unknown
+          rustup target add i686-unknown-linux-gnu
+
+      - name: wasm tooling
+        run: |
+          cargo install wasm-bindgen-cli --version 0.2.105
+          cargo install --git https://github.com/r58Playz/wasm-snip
+
+      - name: Build Anura
+        run: make all
+
+      - name: Assemble static site
+        run: make static
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./static
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
